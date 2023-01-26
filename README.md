@@ -9,15 +9,15 @@ Analyze spatial, temporal, and catagorical patterns in Eugene Police Department 
 
 The steps are broken into seperate scripts
 
-  * ./transform_epd_logs.r
-  * ./collect_epd_csvs.r
-  * ./Geocode_Logs.r
+  * transform_epd_logs.r
+  * collect_epd_csvs.r
+  * Geocode_Logs.r
 
 ### transform_epd_logs.r
 
 Reads in:
 
-   * data/epd_logs.r 
+   * data/epd_logs.r
    * data/epd_city_abbr_map.csv
    * "data.oregon.gov/Active_Businesses_-_ALL.csv" (from external directory)
    
