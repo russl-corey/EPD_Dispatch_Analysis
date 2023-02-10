@@ -1,0 +1,714 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+
+<!-- # : EPD_response_times.rmd -->
+
+<!-- # Author: @russl_corey -->
+
+<!-- # Date: Jan 8, 2023 -->
+
+<!-- # This program is free software: you can redistribute it and/or modify it under  -->
+
+<!-- # the terms of the GNU General Public License as published by the Free Software  -->
+
+<!-- # Foundation, either version 3 of the License, or (at your option) any later  -->
+
+<!-- # version. -->
+
+<!-- #  -->
+
+<!-- # This program is distributed in the hope that it will be useful, but WITHOUT ANY  -->
+
+<!-- # WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A  -->
+
+<!-- # PARTICULAR PURPOSE. See the GNU General Public License for more details. -->
+
+<!-- # You should have received a copy of the GNU General Public License along with  -->
+
+<!-- # this program. If not, see <https://www.gnu.org/licenses/>.  -->
+
+---
+title: "EPD Response Times"
+author: Russell_Corey
+date: January 8, 2023
+output: html_document
+---
+
+\newpage
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+library(knitr)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
+
+```{r load crime data, echo=FALSE, message=FALSE, warning=FALSE}
+
+setwd('/home/russell/Dropbox/DataAnalysis/EPD_Response_Times')
+
+#epd_logs <- read_csv('data/epd_logs_resptime.csv')
+
+#part1_logs <- read_csv('data/epd_logs_resptime_part1.csv')
+
+#epd_logs <- epd_logs[epd_logs$call_year >= 2020, ]
+
+```
+
+# Intro
+This is an over view of response times for Eugene Police Department (EPD). 
+Source at [Github](https://github.com/russl-corey/EPD_Response_Times)
+
+# Data
+
+
+#### Dispatch Data
+
+Dispatch data was retrieved from Eugene Police Department's online dispatch 
+log portal:
+
+<https://coeapps.eugene-or.gov/EPDDispatchLog>
+
+#### Spatial Data
+
+Cartographic elements are from "Oregon geospatial data clearinghouse"
+<https://www.oregon.gov/geo/Pages/sdlibrary.aspx>
+<ftp.gis.oregon.gov>
+
+\newpage
+
+# Methodology
+
+
+
+# Results
+
+
+## Dispatch Call overview
+
+all calls
+
+```{r 5 year overview time plots, echo=FALSE}
+
+epd_logs <- read_csv('data/epd_logs_resptime.csv', show_col_types = FALSE)
+
+epd_logs %>%
+  group_by(call_date) %>%
+  summarize(calls = n()) %>%
+  ggplot() +
+  labs(y='# Calls/day', title="5 year Eugene Police Dispatch Daily Calls Count") +
+  geom_line(aes(x=call_date, y=calls, color='Number of Calls')) 
+
+epd_logs %>%
+  group_by(month=floor_date(call_date, 'month')) %>%
+  summarize(calls = n(), times = mean(resptime)) %>%
+  ggplot() +
+  labs(y='# Calls/month', title="5 year Eugene Police Dispatch Calls") +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+  scale_y_continuous(labels = scales::comma) +
+  geom_line(aes(x=month, y=calls, color='Number of Calls')) 
+
+epd_logs %>%
+  group_by(month=floor_date(call_date, 'month')) %>%
+  summarize(calls = n(), times = mean(resptime)) %>%
+  ggplot() +
+  labs(y='avg response time (min)', title="5 year Eugene Police Response times") +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+  scale_y_continuous(labels = scales::comma)+
+  geom_line(aes(x=month, y=times, color='Response Times')) 
+
+# Export calls and avg resp by month
+epd_logs %>%
+  group_by(month=floor_date(call_date, 'month')) %>%
+  summarize(calls = n(), times = mean(resptime)) %>%
+  write_csv('blender/5year_trends.csv')
+
+```
+
+The maximum amount of calls the portal will return is 250.
+
+![max calls](screens/EPD_max_calls.png)
+
+Since the script that scraped the search portal querried each day seperatly, and looking at the 
+number of logs retrieved for each day in the above chart, we can see that we didn't hit that 250 log limit 
+so our data set isn't missing logs on busy days.
+
+## Part 1, Serious Crimes
+
+The FBI categorizes the a handful of crimes as Part 1.
+
+"The UCR Program collects data about Part I offenses in order to measure the level and scope of crime occurring throughout the nation.  The program’s founders chose these offenses because they are serious crimes, they occur with regularity in all areas of the country, and they are likely to be reported to police. " 
+-[FBI Definitions](https://ucr.fbi.gov/crime-in-the-u.s/2011/crime-in-the-u.s.-2011/offense-definitions)
+
+
+Part 1 offenses are 
+
+  * Criminal homicide
+  * Forcible rape
+  * Robbery
+  * Aggravated assault
+  * Burglary (breaking or entering)
+  * Larceny
+  * Motor vehicle theft
+  * Arson
+  
+These names don't directly correspond to the incident descriptions in the EPD dispatch data set. Instead they map to:
+
+  * N\A
+  * N\A
+  * Robbery
+  * Assault 4
+  * Burglary
+  * Theft
+  * Theft
+  * Arson
+
+noting that homicides and rape are not present in the EPD dispatch dataset.
+
+overview of total number of calls for serious crimes.
+
+### Comparision of Dispatch Logs Vs Federal Reports
+
+Since we are missing catagories, let's see what the Federal NIBRS reports look like.
+```{r Summary part 1 breakdown, echo=FALSE, warning=FALSE}
+
+library("ggcorrplot")   
+
+# Load formatted data by sourcing associated r script
+source('/home/russell/Dropbox/DataAnalysis/Oregon_Crime_Report/OpenData-Offenses-All.r')
+
+# Show table of total Part 1 counts by type from federal NIBRS 
+offenses %>% 
+  filter(agency == 'eugene pd mip') %>%
+  filter(part1 == TRUE) %>%
+  group_by(`NIBRS Crime Description`) %>%
+  summarize(totals = sum(`Distinct Offenses`)) %>%
+  kable(caption='Federal NIBRS EPD Part 1 Breakdown')
+
+# Reset working dir
+setwd('/home/russell/Dropbox/DataAnalysis/EPD_Response_Times')
+
+# load data
+epd_logs <- read_csv('data/epd_logs_resptime.csv', show_col_types = FALSE)
+
+# Show table of Part1 counts by type for dispatch logs
+epd_logs %>%
+  filter(part1 == 'TRUE') %>%
+  group_by(`Incident Desc   `) %>%
+  summarize(calls = n()) %>%
+  kable(caption='EPD Part 1 Dispatch logs' )
+
+# Create tablse of daily offenses and dispatch calls
+fed <- offenses %>% 
+  filter(date >= '2018-01-01') %>%
+  filter(agency == 'eugene pd mip') %>%
+  filter(part1 == TRUE) %>%
+  group_by(date) %>%
+  summarize(fed_call = sum(`Distinct Offenses`))
+
+disp <- epd_logs %>%
+  filter(part1 == 'TRUE') %>%
+  group_by(call_date) %>%
+  summarize(calls = n())
+
+# Merge daily totals
+both <- merge(x=fed, y=disp, by.x='date', by.y='call_date', both=TRUE)
+
+ggplot(data=both) + 
+ scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+    scale_y_continuous(labels = scales::comma) +
+    geom_line(aes(x=date, y=calls, color='Number of Calls')) +
+    geom_line(aes(x=date, y=fed_call, color='Fed reports'))
+
+# Repeat for monthly call totals
+fed <- offenses %>% 
+  filter(date >= '2018-01-01') %>%
+  filter(agency == 'eugene pd mip') %>%
+  filter(part1 == TRUE) %>%
+  group_by(month=floor_date(date, 'month')) %>%
+  summarize(fed_call = sum(`Distinct Offenses`))
+
+disp <- epd_logs %>%
+  filter(part1 == 'TRUE') %>%
+  group_by(month=floor_date(call_date, 'month')) %>%
+  summarize(calls = n())
+
+both <- merge(x=fed, y=disp, by='month', both=TRUE)
+
+ggplot(data=both) + 
+ scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+    scale_y_continuous(labels = scales::comma) +
+    geom_line(aes(x=month, y=calls, color='Number of Calls')) +
+    geom_line(aes(x=month, y=fed_call, color='Fed reports'))
+
+
+qqnorm(both$fed_call, main = 'QQ Plot') #create Q-Q plot
+qqline(both$fed_call) #add straight diagonal line to plot
+
+qqnorm(both$calls, main = 'QQ Plot') #create Q-Q plot
+qqline(both$calls) #add straight diagonal line to plot
+
+both %>%
+ select(calls, fed_call) %>%
+  cor() %>% 
+  ggcorrplot(show.diag = FALSE, type = 'lower', lab=TRUE) +  
+  ggplot2::theme(legend.text=ggplot2::element_text(size=10))
+
+both %>%
+ select(calls, fed_call) %>%
+  cor(method='spearman') %>% 
+  ggcorrplot(show.diag = FALSE, type = 'lower', lab=TRUE) +  
+  ggplot2::theme(legend.text=ggplot2::element_text(size=10))
+```
+Both the dispatch calls and federal reported incidents are close to being normally distributed, but there 
+are some outliers so I looked at both the Person and Spearman correlation coefficients, which are 0.64 and 0.65 respectively indicating a 
+moderately strong correlation. Thus despite the Dispatch Calls not fully covering the extent of all reported crimes, we can still use those calls since they
+are strongly correlated with the federal data. 
+
+
+
+
+
+## 5 Year Trendlines, all calls
+
+```{r 5 year trendlines, echo=FALSE, results = 'as-is'}
+library(zoo)
+
+# Load epd_logs fresh
+epd_logs <- read_csv('data/epd_logs_resptime.csv', show_col_types = FALSE)
+
+call_data <- epd_logs %>%
+  group_by(month=floor_date(call_date, 'month')) %>%
+  summarize(calls = n(), times = mean(resptime)) %>%
+  mutate(calls_avg7 = rollmean(calls, k=7, fill=NA, align='right'),
+         times_avg7 = rollmean(times, k=7, fill=NA, align='right'))
+
+lm_call <- lm(calls ~ month, data=call_data)
+lm_resp <- lm(times ~ month, data=call_data)
+
+
+summary(lm_call)$coefficients[2,] %>% 
+  kable()
+
+call_data %>%
+  ggplot(aes(month, calls)) +
+    labs(y='# calls/month', title="5yr  Calls") +
+    geom_point() +
+    geom_line(aes(month, calls_avg7, color='7mnth avg')) +
+    expand_limits(y=0) +
+    geom_smooth(method='lm')
+
+ summary(lm_resp)$coefficients[2,] %>% 
+  kable()
+ 
+call_data %>%
+    ggplot(aes(month, times)) +
+      labs(y='avg response time (min)', title="5yr Response times ") +
+      geom_point() +
+      expand_limits(y=0) +
+      geom_line(aes(month, times_avg7, color='7mnth avg')) +
+      geom_smooth(method='lm')
+
+```
+## 5 year trendlines, Part 1 calls
+
+
+```{r 5 year trendlines part1, echo=FALSE, results = 'as-is'}
+
+# Load epd_logs fresh
+epd_logs <- read_csv('data/epd_logs_resptime.csv', show_col_types = FALSE)
+
+# create data set to feed linear model
+call_data <- epd_logs %>%
+  filter(part1 == TRUE) %>%
+  group_by(month=floor_date(call_date, 'month')) %>%
+  summarize(calls = n(), times = mean(resptime))  %>%
+  mutate(calls_avg7 = rollmean(calls, k=7, fill=NA, align='right'),
+         times_avg7 = rollmean(times, k=7, fill=NA, align='right'))
+
+call_data %>%
+  ggplot(aes(month, calls)) +
+    labs(y='# calls/month', title="5yr  Calls") +
+    geom_point() +
+    geom_line(aes(month, smooth(smooth(calls)), color='7mnth avg')) +
+    expand_limits(y=0) +
+    geom_smooth(method='lm')
+ 
+call_data %>%
+    ggplot(aes(month, times)) +
+      labs(y='avg response time (min)', title="5yr Response times ") +
+      geom_point() +
+      geom_line(aes(month, times_avg7, color='7mnth avg')) +
+      expand_limits(y=0) +
+      geom_smooth(method='lm')
+
+# Save Dat5a
+call_data %>% write_csv('blender/part1_monthly_plots.csv')
+  
+# Clean
+#rm(lm_call, lm_resp, call_data)
+
+
+  
+```
+
+
+
+
+### Monthly Stats
+
+Calls per day and average response times by month for 5 year(2018 - 2022), 3 year () and 1 year (2022) time windows.  below.
+
+```{r Monthly part1 calls, echo=FALSE, warning=FALSE, results='asis'}
+
+# Load epd_logs fresh
+epd_logs <- read_csv('data/epd_logs_resptime.csv', show_col_types = FALSE)
+
+data_5yr <- epd_logs %>%
+  filter(part1 == 'TRUE') %>%
+  group_by(call_date) %>%
+  summarize(count = n()) %>%
+  group_by(month=format(call_date,"%m")) %>%
+  summarize(max_5yr = max(count), min_5yr = min(count), avg_5yr = round(mean(count),1)) 
+
+data_3yr <- epd_logs %>%
+  filter(part1 == 'TRUE', call_year > 2019) %>%
+  group_by(call_date) %>%
+  summarize(count = n()) %>%
+  group_by(month=format(call_date,"%m")) %>%
+  summarize(max_3yr = max(count), min_3yr = min(count), avg_3yr = round(mean(count),1)) 
+
+data_1yr <- epd_logs %>%
+  filter(part1 == 'TRUE', call_year == 2022) %>%
+  group_by(call_date) %>%
+  summarize(count = n()) %>%
+  group_by(month=format(call_date,"%m")) %>%
+  summarize(max_1yr = max(count), min_1yr = min(count), avg_1yr = round(mean(count),1)) 
+
+data <- data_5yr %>%
+  merge(data_3yr, by='month') %>%
+  merge(data_1yr, by='month')  %>%
+ mutate("Month" = as.Date(paste0("01-2020-", month), format = "%d-%Y-%m"))
+         #  as.Date(as.integer(month), format='%m', origin='2020-01-01'))
+
+# clean tmp data frames
+rm(data_5yr, data_3yr, data_1yr)
+
+data %>% ggplot() +
+  labs(y='# Calls/day', title="Total Daily Part 1 Call Summary") +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  # 5 year hi/lo/avg
+  geom_line(aes(x=Month, y=avg_5yr, color='5 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=max_5yr, color='5 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=min_5yr, color='5 yr')) +
+  # 3 year hi/lo/avg
+  geom_line(aes(x=Month, y=avg_3yr, color='3 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=max_3yr, color='3 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=min_3yr, color='3 yr')) +
+  # 1 year hi/lo/avg
+  geom_line(aes(x=Month, y=avg_1yr, color='1 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=max_1yr, color='1 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=min_1yr, color='1 yr'))
+  
+# clean
+rm(data)
+```
+Next is an overview of the highest, lowest and mean for each month for average daily call response times for part 1 crimes.
+
+```{r Monthly part1 response, echo=FALSE, warning=FALSE, results='asis'}
+
+# Load epd_logs fresh
+epd_logs <- read_csv('data/epd_logs_resptime.csv', show_col_types = FALSE)
+
+data_5yr <- epd_logs %>%
+  filter(part1 == 'TRUE') %>%
+  group_by(call_date) %>%
+  summarize(resp_avg = mean(resptime)) %>%
+  group_by(month=format(call_date,"%m")) %>%
+  summarize(max_5yr = max(resp_avg), min_5yr = min(resp_avg), avg_5yr = round(mean(resp_avg),1)) 
+
+data_3yr <- epd_logs %>%
+  filter(part1 == 'TRUE', call_year > 2019) %>%
+  group_by(call_date) %>%
+  summarize(resp_avg = mean(resptime)) %>%
+  group_by(month=format(call_date,"%m")) %>%
+  summarize(max_3yr = max(resp_avg), min_3yr = min(resp_avg), avg_3yr = round(mean(resp_avg),1)) 
+
+data_1yr <- epd_logs %>%
+  filter(part1 == 'TRUE', call_year == 2022) %>%
+  group_by(call_date) %>%
+  summarize(resp_avg = mean(resptime)) %>%
+  group_by(month=format(call_date,"%m")) %>%
+  summarize(max_1yr = max(resp_avg), min_1yr = min(resp_avg), avg_1yr = round(mean(resp_avg),1)) 
+
+data <- data_5yr %>%
+  merge(data_3yr, by='month') %>%
+  merge(data_1yr, by='month')  %>%
+ mutate("Month" = as.Date(paste0("01-2020-", month), format = "%d-%Y-%m"))
+         #  as.Date(as.integer(month), format='%m', origin='2020-01-01'))
+
+# clean tmp data frames
+rm(data_5yr, data_3yr, data_1yr)
+
+data %>% ggplot() +
+  labs(y='minutes', title="Daily Part 1 Average Response Times (hi/low/avg)") +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  # 5 year hi/lo/avg
+  geom_line(aes(x=Month, y=avg_5yr, color='5 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=max_5yr, color='5 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=min_5yr, color='5 yr')) +
+  # 3 year hi/lo/avg
+  geom_line(aes(x=Month, y=avg_3yr, color='3 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=max_3yr, color='3 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=min_3yr, color='3 yr')) +
+  # 1 year hi/lo/avg
+  geom_line(aes(x=Month, y=avg_1yr, color='1 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=max_1yr, color='1 yr')) +
+  geom_line(linetype='dashed', aes(x=Month, y=min_1yr, color='1 yr'))
+  
+# Clean 
+rm(data)
+```
+
+### Business Calls
+
+```{r epd business calls, echo=FALSE}
+
+biz <- epd_logs[epd_logs$business == TRUE,]
+
+epd_logs %>%
+  filter(part1 == TRUE) %>%
+  group_by(`Incident Desc   `) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)),
+            ) %>%
+  arrange(desc(avg_resp)) %>%
+  kable(main = "Part 1 avg response times (minutes)")
+
+epd_logs %>%
+  filter(business == TRUE) %>%
+  filter(part1 == TRUE) %>%
+  group_by(`Incident Desc   `) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)),
+            ) %>%
+  arrange(desc(avg_resp)) %>%
+  kable(main = "Part 1 avg response times (minutes)")
+
+```
+
+
+# Spatial Overview
+
+### Raster: All Part 1 Calls
+
+![All Pt1 Calls](maps/avg_response_all_idw.png)
+
+![Business Pt1 Calls](maps/avg_response_biz_idw.png)
+
+
+### Neighborhood overviev
+
+```{r neighbor, echo=FALSE, warning=FALSE}
+
+neighbor_logs <- read_csv('data/epd_dispatch_neighborhood.csv', show_col_types = FALSE)
+
+hood_stats <- neighbor_logs %>%
+  group_by(NAME) %>%
+  summarize(num_calls = n(), avg_time = as.integer(mean(resptime))) 
+ 
+
+barplot(hood_stats$num_calls,
+          main="Calls by Neigbborhood",
+          names.arg = hood_stats$NAME,
+          ylab='count',
+          las =2,
+          cex.names = 0.7,
+          format.args = list(big.mark = ",",
+  scientific = FALSE)
+)
+barplot(hood_stats$avg_time,
+          main="Avg Wait by Neigbborhood",
+          names.arg = hood_stats$NAME,
+          ylab='count',
+          las =2,
+          cex.names = 0.7,
+          format.args = list(big.mark = ",",
+  scientific = FALSE)
+)
+
+pie(hood_stats$num_calls, labels=hood_stats$NAME)
+
+
+```
+
+![Part 1](maps/neighborhood_serious_response2.png)
+
+![Part 1 Business](maps/neighborhood_business_serious_response.png)
+
+# Sources
+
+#### Oregon Crime Data
+
+"Oregon State Police: Uniform Crime Reporting"
+
+    https://www.oregon.gov/osp/Pages/Uniform-Crime-Reporting-Data.aspx
+
+#### Oregon Census Data
+
+"Census Data for Oregon" Population Research Center
+
+    https://www.pdx.edu/population-research/census-data-oregon 
+
+Direct link for data set:
+
+    https://drive.google.com/uc?export=download&id=1JrrmYiQUBPux8nnJ88epAAk9U5rbRDBD
+
+
+#### Oregon Spatial Data Library
+
+"Oregon Counties - 2015"
+
+    https://spatialdata.oregonexplorer.info/geoportal/details;id=361c06fee9de4e24a72e280fb386a771
+
+# Appendix Map
+
+### Raster: All Calls
+
+![All Calls](maps/avg_response_all_idw.png)
+
+### Raster: Business Calls
+
+### Raster: Part 1 Business Calls
+
+### Neighborhoods: All Part 1
+
+![Part 1](maps/neighborhood_serious_response2.png)
+
+### Neighborhoods: Part 1 Business Locations
+
+![Part 1 Business](maps/neighborhood_business_serious_response.png)
+
+# Appendix B
+
+Result Table
+
+```{r appendix B1, echo=FALSE}
+
+epd_logs %>%
+  group_by(`Incident Desc   `,`Priority   ` ) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)), 
+           # avg_prty = round(mean(as.integer(`Priority   `)), 1)
+            ) %>%
+  filter(total_calls > 10) %>%
+  kable(main = 'EPD Response Times by Description and Priority')
+
+epd_logs %>%
+  group_by(`Incident Desc   ` ) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)), 
+           # avg_prty = round(mean(as.integer(`Priority   `)), 1)
+            ) %>%
+  filter(total_calls > 10) %>%
+  kable(main = 'EPD Response Times by Description and Priority')
+```
+
+```{r A12, echo = FALSE}
+
+epd_logs %>%
+  group_by(`Incident Desc   `) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)),
+            ) %>%
+  arrange(desc(total_calls )) %>%
+  kable(main = "Priority 1 avg response times (minutes)")
+
+epd_logs %>%
+  group_by(`Incident Desc   `, `Priority   `) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)),
+            ) %>%
+  arrange(desc(total_calls )) %>%
+  kable(main = "Priority 1 avg response times (minutes)")
+
+epd_logs %>%
+  group_by(`Incident Desc   `) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)),
+            ) %>%
+  arrange(desc(avg_resp)) %>%
+  kable(main = "Priority 1 avg response times (minutes)")
+
+```
+
+# Appendex B2 Maps
+#### Priority 1 avg response times (minutes)
+
+```{r A2, echo=FALSE}
+epd_logs %>%
+ filter(`Priority   ` == 1) %>%
+  group_by(`Incident Desc   `) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)),
+            ) %>%
+  filter(total_calls > 10) %>%
+  kable(main = "Priority 1 avg response times (minutes)")
+```
+
+#### Priority 2 avg response times (minutes)
+
+```{r A22, echo=FALSE}
+epd_logs %>%
+ filter(`Priority   ` == 2) %>%
+  group_by(`Incident Desc   `) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)),
+            ) %>%
+  filter(total_calls > 10) %>%
+  kable(main = "Priority 2 avg response times (minutes)")
+```
+```{r A23, echo=FALSE}
+
+epd_logs %>%
+  group_by(`Priority   `) %>%
+  summarize(total_calls = n(), 
+            avg_resp = as.integer(mean(resptime)),
+            ) %>%
+  #filter(total > 10) %>%
+  #arrange(desc(total)) %>%
+  head(10) %>%
+  kable(main = " avg response times by priority (minutes)")
+
+```
+
+\newpage
+
+
+# Appendix C
+
+```{r lane pop, echo=FALSE, warning=FALSE, results='asis'}
+
+pop <- data.frame(year = as.POSIXct(c('2010', '2020'), format='%Y'), lane_pop= c(351715, 382971))
+
+pop %>%
+ ggplot( aes(year, lane_pop)) +
+  labs(title = "Lane County Population") +
+  geom_point() +
+  geom_smooth(method='lm') +
+  expand_limits(y=0) +
+  scale_y_continuous(labels = scales::comma) 
+  #scale_x_continuous(labels = scales::comma)
+```
+
+# Appendix D
+
+source code available at <https://github.com/russl-corey/EPD_Response_Times>
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with this program. If not, see [\<https://www.gnu.org/licenses/\>](https://www.gnu.org/licenses/).
