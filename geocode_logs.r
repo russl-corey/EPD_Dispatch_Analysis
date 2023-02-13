@@ -28,10 +28,10 @@ setwd("/home/russell/Dropbox/DataAnalysis/EPD_Response_Times/")
 # PART ONE: load transformed epd dispatch data
 epd_logs <- read_csv('data/epd_logs_resptime.csv')
 
-# set to lower case
+# set location to lower case
 epd_logs$location <- tolower(epd_logs$`Location   `)
 
-# Seperate the numbered addresses from street intersections
+# Separate the numbered addresses from street intersections
 epd_inter <- epd_logs[grepl('/', epd_logs$`Location   `),]
 epd_addr <- epd_logs[!grepl('/', epd_logs$`Location   `),]
 
@@ -61,7 +61,7 @@ lane_addresses <- geojson_read("/home/russell/Data/GIS/OpenAddresses/lane-addres
 # create lower case street name column on lane_addresses
 lane_addresses$lstreet <- tolower(lane_addresses$street)
 
-# remove duplicate entries with same street, and city to get 
+# remove duplicate entries with same street, and city as a way to get 
 # rid of apartments since epd logs dont record apts
 lane_addresses <- lane_addresses[!duplicated(lane_addresses@data[c('street', 'number', 'city')]), ]
 
@@ -71,13 +71,76 @@ logs_geocoded <- merge(x=lane_addresses, y=epd_addr,
                        by.y=c('number', 'street', 'city_name'),
                        all = FALSE)
 
+# Part Two B: geo reference calls from the street intersection data set
+
+# Load geo refernced Lane County street intersections
+lane_intersections <- geojson_read("/home/russell/Data/GIS/lane_intersections/intersection3.geojson",  what = "sp")
+
+# filter out unneeded columns
+lane_intersections@data <- lane_intersections@data %>%
+  select('PREFIX', 'PREFIX_2', 'NAME', 'NAME_2', 'TYPE', 'TYPE_2', 'LCITY')
+
+# Drop rows that are empty for either street1 or street2
+lane_intersections <- lane_intersections[!is.na(lane_intersections$PREFIX) | !is.na(lane_intersections$NAME) | !is.na(lane_intersections$TYPE),]
+lane_intersections <- lane_intersections[!is.na(lane_intersections$PREFIX_2) | !is.na(lane_intersections$NAME_2) | !is.na(lane_intersections$TYPE_2),]
+
+# format address parts and construct street1
+lane_intersections$PREFIX[is.na(lane_intersections$PREFIX)] <- ' '
+lane_intersections$NAME[is.na(lane_intersections$NAME)] <- ' '
+lane_intersections$TYPE[is.na(lane_intersections$TYPE)] <- ' '
+lane_intersections$street1 <- str_trim(tolower(paste(lane_intersections$PREFIX, lane_intersections$NAME, lane_intersections$TYPE)), 'both')
+
+# format address parts and construct street2
+lane_intersections$PREFIX_2[is.na(lane_intersections$PREFIX_2)] <- ' '
+lane_intersections$NAME_2[is.na(lane_intersections$NAME_2)] <- ' '
+lane_intersections$TYPE_2[is.na(lane_intersections$TYPE_2)] <- ' '
+lane_intersections$street2 <- str_trim(tolower(paste(lane_intersections$PREFIX_2, lane_intersections$NAME_2, lane_intersections$TYPE_2)), 'both')
+
+# parse location column in epd_inter dataset to street1 and street2
+epd_inter[c('street1', 'street2')] <- str_split_fixed(epd_inter$location, '/', 2)
+
+# format string2 into street and city
+# Split Street into street and city
+epd_inter[c('street2', 'city')] <- str_split_fixed(epd_inter$street2, ',', 2)
+
+# rewite anything with 'eugene' in it to epd's abbreviation
+epd_inter$city[grepl('eugene', epd_inter$city)] <- 'eug'
+
+# Remove white space from city column
+epd_inter$city <- gsub(" ","",epd_inter$city)
+
+# Join formatted city names from mapping
+epd_inter <- merge(x=epd_inter, y=epd_openaddress_map, by.x='city', by.y='epd_abbrv', all=FALSE)
+
+# join address to georef 
+logs_geocoded_street1 <- merge(x=lane_intersections, y=epd_inter,
+                       by.x=c('street1', 'street2', 'LCITY'), 
+                       by.y=c('street1', 'street2', 'city_name'),
+                       all.x = TRUE) %>%
+  filter(!is.na(resptime))
+
+logs_geocoded_street2 <- merge(x=lane_intersections, y=epd_inter,
+                               by.x=c('street1', 'street2', 'LCITY'), 
+                               by.y=c('street2', 'street1', 'city_name'),
+                               all.x = TRUE) %>%
+  filter(!is.na(resptime))
+
+# combine both sets of georefed data
+logs_geocoded_inter <- rbind(logs_geocoded_street1, logs_geocoded_street2)
+
+# combine epd_str and epd_inter georeffed logs
+InBoth = intersect(colnames(logs_geocoded), colnames(logs_geocoded_inter))
+all_geocoded = rbind(logs_geocoded[,InBoth], logs_geocoded_inter[,InBoth])
+
 # Part Three: file output
 
 # Write all out
-write_csv(logs_geocoded, paste0(out_folder, 'epd_dispatch_geocoded.csv'))
+write_csv(all_geocoded, paste0(out_folder, 'epd_dispatch_geocoded.csv'))
 
 # Clean up
 rm(epd_logs, epd_addr, lane_addresses, out_folder, epd_inter, 
-   epd_openaddress_map, logs_geocoded)
+   epd_openaddress_map, logs_geocoded, logs_geocoded_street1,
+   logs_geocoded_street2, logs_geocoded_inter, logs_geocoded, 
+   lane_intersections, InBoth)
 
 
